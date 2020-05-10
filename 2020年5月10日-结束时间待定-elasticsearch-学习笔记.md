@@ -81,7 +81,7 @@ PUT /{index}/{type}/{id}
 }
 ```
 
-![](.\elasticsearch-learn-image\image-20200510153729110.png)
+![image-20200510153729110.png](elasticsearch-learn-image/image-20200510153729110.png)
 
 ##### Autogenerating IDs (自动生成的id)
 
@@ -107,7 +107,7 @@ POST /website/blog/
 }
 ```
 
-![image-20200510154551404](.\elasticsearch-learn-image\image-20200510154551404.png)
+![image-20200510154551404](elasticsearch-learn-image/image-20200510154551404.png)
 
 
 
@@ -121,7 +121,7 @@ POST /website/blog/
 GET /website/blog/123?pretty
 ```
 
-![image-20200510154915415](.\elasticsearch-learn-image\image-20200510154915415.png)
+![image-20200510154915415](elasticsearch-learn-image/image-20200510154915415.png)
 
 ##### 获取文档指定字段
 
@@ -131,7 +131,7 @@ GET /website/blog/123?pretty
 GET /website/blog/123?_source=title,text
 ```
 
-![image-20200510155236157](.\elasticsearch-learn-image\image-20200510155236157.png)
+![image-20200510155236157](elasticsearch-learn-image/image-20200510155236157.png)
 
 或者，如果你只想得到 `_source` 字段，不需要任何元数据，你能使用 `_source` 端点：
 
@@ -139,7 +139,7 @@ GET /website/blog/123?_source=title,text
 GET /website/blog/123/_source
 ```
 
-![image-20200510155412915](.\elasticsearch-learn-image\image-20200510155412915.png)
+![image-20200510155412915](elasticsearch-learn-image/image-20200510155412915.png)
 
 
 
@@ -175,13 +175,13 @@ Content-Length: 0
 
 postman中，之前添加过id1的数据。但是没有id2的数据。
 
-![image-20200510155956720](.\elasticsearch-learn-image\image-20200510155956720.png)
+![image-20200510155956720](elasticsearch-learn-image/image-20200510155956720.png)
 
-![image-20200510160124958](.\elasticsearch-learn-image\image-20200510160124958.png)
+![image-20200510160124958](elasticsearch-learn-image/image-20200510160124958.png)
 
 
 
-#### 7. 更新整个文档
+#### 7. 更新整个文档 （修改数据）
 
 在 Elasticsearch 中文档是 *不可改变* 的，不能修改它们。相反，如果想要更新现有的文档，需要 *重建索引* 或者进行替换， 我们可以使用相同的 `index` API 进行实现
 
@@ -208,6 +208,65 @@ PUT /website/blog/123
 
 `created` 标志设置成 `false` ，是因为相同的索引、类型和 ID 的文档已经存在。
 
-![image-20200510160456754](.\elasticsearch-learn-image\image-20200510160456754.png)
+![image-20200510160456754](elasticsearch-learn-image/image-20200510160456754.png)
 
-![image-20200510160555200](.\elasticsearch-learn-image\image-20200510160555200.png)
+![image-20200510160555200](elasticsearch-learn-image/image-20200510160555200.png)
+
+
+
+#### 8. 创建新文档 （避免重复添加）
+
+当我们索引一个文档，怎么确认我们正在创建一个完全新的文档，而不是覆盖现有的呢？
+
+请记住， `_index` 、 `_type` 和 `_id` 的组合可以唯一标识一个文档。所以，确保创建一个新文档的最简单办法是，使用索引请求的 `POST` 形式让 Elasticsearch 自动生成唯一 `_id` :
+
+```js
+POST /website/blog/
+{ ... }
+```
+
+
+
+然而，如果已经有自己的 `_id` ，那么我们必须告诉 Elasticsearch ，只有在相同的 `_index` 、 `_type` 和 `_id` 不存在时才接受我们的索引请求。这里有两种方式，他们做的实际是相同的事情。使用哪种，取决于哪种使用起来更方便。
+
+第一种方法使用 `op_type` 查询-字符串参数：
+
+```js
+PUT /website/blog/123?op_type=create
+{ ... }
+```
+
+
+
+第二种方法是在 URL 末端使用 `/_create` :
+
+```js
+PUT /website/blog/123/_create
+{ ... }
+```
+
+
+
+如果创建新文档的请求成功执行，Elasticsearch 会返回元数据和一个 `201 Created` 的 HTTP 响应码。
+
+另一方面，如果具有相同的 `_index` 、 `_type` 和 `_id` 的文档已经存在，Elasticsearch 将会返回 `409 Conflict` 响应码，以及如下的错误信息：
+
+```sense
+{
+   "error": {
+      "root_cause": [
+         {
+            "type": "document_already_exists_exception",
+            "reason": "[blog][123]: document already exists",
+            "shard": "0",
+            "index": "website"
+         }
+      ],
+      "type": "document_already_exists_exception",
+      "reason": "[blog][123]: document already exists",
+      "shard": "0",
+      "index": "website"
+   },
+   "status": 409
+}
+```
