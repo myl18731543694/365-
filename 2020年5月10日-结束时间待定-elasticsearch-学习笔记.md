@@ -270,3 +270,161 @@ PUT /website/blog/123/_create
    "status": 409
 }
 ```
+
+![image-20200510162238133](C:\Users\孟轶龙\AppData\Roaming\Typora\typora-user-images\image-20200510162238133.png)
+
+![image-20200510162341741](C:\Users\孟轶龙\AppData\Roaming\Typora\typora-user-images\image-20200510162341741.png)
+
+
+
+#### 9. 删除文档 （增删改齐了，不论是否存在version会一直增加）
+
+删除文档的语法和我们所知道的规则相同，只是使用 `DELETE` 方法：
+
+```sense
+DELETE /website/blog/123
+```
+
+如果找到该文档，Elasticsearch 将要返回一个 `200 ok` 的 HTTP 响应码，和一个类似以下结构的响应体。注意，字段 `_version` 值已经增加:
+
+```js
+{
+  "found" :    true,
+  "_index" :   "website",
+  "_type" :    "blog",
+  "_id" :      "123",
+  "_version" : 3
+}
+```
+
+
+
+如果文档没有找到，我们将得到 `404 Not Found` 的响应码和类似这样的响应体：
+
+```js
+{
+  "found" :    false,
+  "_index" :   "website",
+  "_type" :    "blog",
+  "_id" :      "123",
+  "_version" : 4
+}
+```
+
+
+
+即使文档不存在（ `Found` 是 `false` ）， `_version` 值仍然会增加。这是 Elasticsearch 内部记录本的一部分，用来确保这些改变在跨多节点时以正确的顺序执行。
+
+![image-20200510162810200](C:\Users\孟轶龙\AppData\Roaming\Typora\typora-user-images\image-20200510162810200.png)
+
+![image-20200510162945282](C:\Users\孟轶龙\AppData\Roaming\Typora\typora-user-images\image-20200510162945282.png)
+
+
+
+#### 10.  处理冲突 （并发可能引起的添加修改问题）
+
+当我们使用 `index` API 更新文档 ，可以一次性读取原始文档，做我们的修改，然后重新索引 *整个文档* 。 最近的索引请求将获胜：无论最后哪一个文档被索引，都将被唯一存储在 Elasticsearch 中。如果其他人同时更改这个文档，他们的更改将丢失。
+
+很多时候这是没有问题的。也许我们的主数据存储是一个关系型数据库，我们只是将数据复制到 Elasticsearch 中并使其可被搜索。 也许两个人同时更改相同的文档的几率很小。或者对于我们的业务来说偶尔丢失更改并不是很严重的问题。
+
+但有时丢失了一个变更就是 *非常严重的* 。试想我们使用 Elasticsearch 存储我们网上商城商品库存的数量， 每次我们卖一个商品的时候，我们在 Elasticsearch 中将库存数量减少。（这样条件下，可能会丢失数据）
+
+变更越频繁，读数据和更新数据的间隙越长，也就越可能丢失变更。
+
+在数据库领域中，有两种方法通常被用来确保并发更新时变更不会丢失：
+
+- ***悲观并发控制\***
+
+  这种方法被关系型数据库广泛使用，它假定有变更冲突可能发生，因此阻塞访问资源以防止冲突。 一个典型的例子是读取一行数据之前先将其锁住，确保只有放置锁的线程能够对这行数据进行修改。
+
+- ***乐观并发控制\***
+
+  Elasticsearch 中使用的这种方法假定冲突是不可能发生的，并且不会阻塞正在尝试的操作。 然而，如果源数据在读写当中被修改，更新将会失败。应用程序接下来将决定该如何解决冲突。 例如，可以重试更新、使用新的数据、或者将相关情况报告给用户。
+
+
+
+#### 11. 乐观并发控制 （@Deprecated，乐观锁，version版本号， 这个在es2版本可以用，在7版本（ Please use `if_seq_no` and `if_primary_term` instead））
+
+Elasticsearch 是分布式的。当文档创建、更新或删除时， 新版本的文档必须复制到集群中的其他节点。Elasticsearch 也是异步和并发的，这意味着这些复制请求被并行发送，并且到达目的地时也许 *顺序是乱的* 。 Elasticsearch 需要一种方法确保文档的旧版本不会覆盖新的版本。
+
+当我们之前讨论 `index` ， `GET` 和 `delete` 请求时，我们指出每个文档都有一个 `_version` （版本）号，当文档被修改时版本号递增。 Elasticsearch 使用这个 `_version` 号来确保变更以正确顺序得到执行。如果旧版本的文档在新版本之后到达，它可以被简单的忽略。
+
+我们可以利用 `_version` 号来确保 应用中相互冲突的变更不会导致数据丢失。我们通过指定想要修改文档的 `version` 号来达到这个目的。 如果该版本不是当前版本号，我们的请求将会失败。
+
+让我们创建一个新的博客文章：
+
+```sense
+PUT /website/blog/1/_create
+{
+  "title": "My first blog entry",
+  "text":  "Just trying this out..."
+}
+```
+
+响应体告诉我们，这个新创建的文档 `_version` 版本号是 `1` 。现在假设我们想编辑这个文档：我们加载其数据到 web 表单中， 做一些修改，然后保存新的版本。
+
+首先我们检索文档:
+
+```sense
+GET /website/blog/1
+```
+
+响应体包含相同的 `_version` 版本号 `1` ：
+
+```js
+{
+  "_index" :   "website",
+  "_type" :    "blog",
+  "_id" :      "1",
+  "_version" : 1,
+  "found" :    true,
+  "_source" :  {
+      "title": "My first blog entry",
+      "text":  "Just trying this out..."
+  }
+}
+```
+
+现在，当我们尝试通过重建文档的索引来保存修改，我们指定 `version` 为我们的修改会被应用的版本：
+
+```sense
+PUT /website/blog/1?version=1 
+{
+  "title": "My first blog entry",
+  "text":  "Starting to get the hang of this..."
+}
+```
+
+此请求成功，并且响应体告诉我们 `_version` 已经递增到 `2` ：
+
+```sense
+{
+  "_index":   "website",
+  "_type":    "blog",
+  "_id":      "1",
+  "_version": 2
+  "created":  false
+}
+```
+
+然而，如果我们重新运行相同的索引请求，仍然指定 `version=1` ， Elasticsearch 返回 `409 Conflict` HTTP 响应码，和一个如下所示的响应体：
+
+```sense
+{
+   "error": {
+      "root_cause": [
+         {
+            "type": "version_conflict_engine_exception",
+            "reason": "[blog][1]: version conflict, current [2], provided [1]",
+            "index": "website",
+            "shard": "3"
+         }
+      ],
+      "type": "version_conflict_engine_exception",
+      "reason": "[blog][1]: version conflict, current [2], provided [1]",
+      "index": "website",
+      "shard": "3"
+   },
+   "status": 409
+}
+```
