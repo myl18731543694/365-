@@ -262,6 +262,7 @@
   SET key value ex seconds
   EXPIRE key seconds
   ```
+
 - 不同之处是， `SETEX` 是一个原子性(atomic)操作，关联值和设置生存时间两个动作会在同一时间内完成，该命令在 Redis 用作缓存时，非常实用。
 
 > 127.0.0.1:6379> keys *
@@ -302,7 +303,9 @@
 #### 5. **SETNX key value** （不存在才会设置value）
 
 - 将 `key` 的值设为 `value` ，当且仅当 `key` 不存在。
+
 - 若给定的 `key` 已经存在，则 `SETNX` 不做任何动作。
+
 - `SETNX` 是『SET if Not eXists』(如果不存在，则 SET)的简写。
 
 - 这个命令类似：
@@ -673,10 +676,11 @@
 >
 > 127.0.0.1:6379> INCRBY a 3
 > (integer) 5
-> 127.0.0.1:6379> set b b
-> OK
 >
 > **不是int会报错**
+>
+> 127.0.0.1:6379> set b b
+> OK
 >
 > 127.0.0.1:6379> INCR b
 > (error) ERR value is not an integer or out of range            
@@ -753,5 +757,3 @@
 - 空的 `key` 也被看作是包含 `0` 的字符串序列。
 
 
-
-## Redis Hash类型命令
